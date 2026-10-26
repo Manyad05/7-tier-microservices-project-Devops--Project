@@ -1,0 +1,107 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: user-service, namespace: shop, labels: { app: user-service, tier: business } }
+spec:
+  replicas: 1
+  strategy: { type: RollingUpdate, rollingUpdate: { maxUnavailable: 0, maxSurge: 1 } }
+  selector: { matchLabels: { app: user-service } }
+  template:
+    metadata: { labels: { app: user-service, tier: business } }
+    spec:
+      securityContext: { runAsNonRoot: true, runAsUser: 10001 }
+      containers:
+        - name: app
+          image: shop/user-service:2.0
+          imagePullPolicy: Never
+          ports: [{ name: http, containerPort: 5000 }]
+          securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: [ALL] } }
+          envFrom:
+            - configMapRef: { name: app-config }
+            - secretRef: { name: app-secret }
+          env:
+            - { name: DB_NAME, value: usersdb }
+          startupProbe:   { httpGet: { path: /health, port: 5000 }, periodSeconds: 3, failureThreshold: 40 }
+          readinessProbe: { httpGet: { path: /ready, port: 5000 }, periodSeconds: 5, timeoutSeconds: 3, failureThreshold: 3 }
+          livenessProbe:  { httpGet: { path: /health, port: 5000 }, periodSeconds: 10, timeoutSeconds: 3, failureThreshold: 3 }
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: user-service, namespace: shop }
+spec:
+  selector: { app: user-service }
+  ports: [{ port: 5000, targetPort: http }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: product-service, namespace: shop, labels: { app: product-service, tier: business } }
+spec:
+  replicas: 1
+  strategy: { type: RollingUpdate, rollingUpdate: { maxUnavailable: 0, maxSurge: 1 } }
+  selector: { matchLabels: { app: product-service } }
+  template:
+    metadata: { labels: { app: product-service, tier: business } }
+    spec:
+      securityContext: { runAsNonRoot: true, runAsUser: 10001 }
+      containers:
+        - name: app
+          image: shop/product-service:2.0
+          imagePullPolicy: Never
+          ports: [{ name: http, containerPort: 8080 }]
+          securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: [ALL] } }
+          envFrom:
+            - configMapRef: { name: app-config }
+            - secretRef: { name: app-secret }
+          env:
+            - { name: PORT, value: "8080" }
+          startupProbe:   { httpGet: { path: /health, port: 8080 }, periodSeconds: 3, failureThreshold: 40 }
+          readinessProbe: { httpGet: { path: /ready, port: 8080 }, periodSeconds: 5, timeoutSeconds: 3, failureThreshold: 3 }
+          livenessProbe:  { httpGet: { path: /health, port: 8080 }, periodSeconds: 10, timeoutSeconds: 3, failureThreshold: 3 }
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 500m, memory: 128Mi }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: product-service, namespace: shop }
+spec:
+  selector: { app: product-service }
+  ports: [{ port: 8080, targetPort: http }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: order-service, namespace: shop, labels: { app: order-service, tier: business } }
+spec:
+  replicas: 1
+  strategy: { type: RollingUpdate, rollingUpdate: { maxUnavailable: 0, maxSurge: 1 } }
+  selector: { matchLabels: { app: order-service } }
+  template:
+    metadata: { labels: { app: order-service, tier: business } }
+    spec:
+      securityContext: { runAsNonRoot: true, runAsUser: 10001 }
+      containers:
+        - name: app
+          image: shop/order-service:2.0
+          imagePullPolicy: Never
+          ports: [{ name: http, containerPort: 3002 }]
+          securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: [ALL] } }
+          envFrom:
+            - configMapRef: { name: app-config }
+            - secretRef: { name: app-secret }
+          env:
+            - { name: DB_NAME, value: ordersdb }
+          startupProbe:   { httpGet: { path: /health, port: 3002 }, periodSeconds: 3, failureThreshold: 40 }
+          readinessProbe: { httpGet: { path: /ready, port: 3002 }, periodSeconds: 5, timeoutSeconds: 3, failureThreshold: 3 }
+          livenessProbe:  { httpGet: { path: /health, port: 3002 }, periodSeconds: 10, timeoutSeconds: 3, failureThreshold: 3 }
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 500m, memory: 192Mi }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: order-service, namespace: shop }
+spec:
+  selector: { app: order-service }
+  ports: [{ port: 3002, targetPort: http }]

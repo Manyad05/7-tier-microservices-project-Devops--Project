@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: gateway, namespace: shop, labels: { app: gateway, tier: edge } }
+spec:
+  replicas: 2
+  strategy: { type: RollingUpdate, rollingUpdate: { maxUnavailable: 0, maxSurge: 1 } }
+  selector: { matchLabels: { app: gateway } }
+  template:
+    metadata: { labels: { app: gateway, tier: edge } }
+    spec:
+      securityContext: { runAsNonRoot: true, runAsUser: 10001 }
+      containers:
+        - name: app
+          image: shop/gateway:2.0
+          imagePullPolicy: Never
+          ports: [{ name: http, containerPort: 3000 }]
+          securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: [ALL] } }
+          envFrom:
+            - configMapRef: { name: app-config }
+            - secretRef: { name: app-secret }
+          env:
+            - { name: PORT, value: "3000" }
+          startupProbe:   { httpGet: { path: /health, port: 3000 }, periodSeconds: 3, failureThreshold: 40 }
+          readinessProbe: { httpGet: { path: /ready, port: 3000 }, periodSeconds: 5, timeoutSeconds: 3, failureThreshold: 3 }
+          livenessProbe:  { httpGet: { path: /health, port: 3000 }, periodSeconds: 10, timeoutSeconds: 3, failureThreshold: 3 }
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 500m, memory: 192Mi }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: gateway, namespace: shop }
+spec:
+  selector: { app: gateway }
+  ports: [{ port: 3000, targetPort: http }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: frontend, namespace: shop, labels: { app: frontend, tier: web } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: frontend } }
+  template:
+    metadata: { labels: { app: frontend, tier: web } }
+    spec:
+      containers:
+        - name: nginx
+          image: shop/frontend:2.0
+          imagePullPolicy: Never
+          ports: [{ name: http, containerPort: 80 }]
+          readinessProbe: { httpGet: { path: /healthz, port: 80 }, periodSeconds: 5 }
+          livenessProbe:  { httpGet: { path: /healthz, port: 80 }, periodSeconds: 15 }
+          resources:
+            requests: { cpu: 20m, memory: 16Mi }
+            limits: { cpu: 200m, memory: 64Mi }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: frontend, namespace: shop }
+spec:
+  type: NodePort
+  selector: { app: frontend }
+  ports:
+    - { port: 80, targetPort: http, nodePort: 30080 }

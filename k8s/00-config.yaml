@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shop
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: shop
+data:
+  DB_HOST: postgres
+  DB_USER: postgres
+  MONGO_URI: mongodb://mongo:27017
+  REDIS_ADDR: redis:6379
+  USER_URL: http://user-service:5000
+  PRODUCT_URL: http://product-service:8080
+  ORDER_URL: http://order-service:3002
+  JWT_EXPIRES_HOURS: "12"
+---
+# Dev-only values. In real clusters use sealed-secrets / external-secrets / a vault.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secret
+  namespace: shop
+type: Opaque
+stringData:
+  POSTGRES_PASSWORD: supersecret
+  DB_PASSWORD: supersecret
+  JWT_SECRET: change-me-to-a-long-random-string-at-least-32-chars
+  INTERNAL_TOKEN: internal-service-token-change-me
+  ADMIN_EMAIL: admin@shop.local
+  ADMIN_PASSWORD: Admin@123
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pg-init
+  namespace: shop
+data:
+  init.sql: |
+    CREATE DATABASE usersdb;
+    CREATE DATABASE ordersdb;

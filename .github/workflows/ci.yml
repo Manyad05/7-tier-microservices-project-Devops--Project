@@ -1,0 +1,23 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax checks
+        run: |
+          node --check gateway/server.js
+          node --check order-service/server.js
+          node --check frontend/app.js
+          python -m py_compile user-service/app.py
+      - name: Build and start the stack
+        run: docker compose up -d --build --wait --wait-timeout 300
+      - name: End-to-end smoke test
+        run: ./scripts/smoke-test.sh http://localhost:8080
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --tail=100
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

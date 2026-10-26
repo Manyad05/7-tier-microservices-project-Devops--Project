@@ -1,0 +1,116 @@
+name: nimbus-shop
+
+x-restart: &restart
+  restart: unless-stopped
+
+services:
+  postgres:
+    <<: *restart
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+    networks: [backend]
+
+  mongo:
+    <<: *restart
+    image: mongo:7
+    volumes: [mongodata:/data/db]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks: [backend]
+
+  redis:
+    <<: *restart
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "64mb", "--maxmemory-policy", "allkeys-lru"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [backend]
+
+  user-service:
+    <<: *restart
+    build: ./user-service
+    environment:
+      DB_HOST: postgres
+      DB_NAME: usersdb
+      DB_USER: postgres
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [backend]
+
+  product-service:
+    <<: *restart
+    build: ./product-service
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+      REDIS_ADDR: redis:6379
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN}
+    depends_on:
+      mongo: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    networks: [backend]
+
+  order-service:
+    <<: *restart
+    build: ./order-service
+    environment:
+      DB_HOST: postgres
+      DB_NAME: ordersdb
+      DB_USER: postgres
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      PRODUCT_URL: http://product-service:8080
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN}
+    depends_on:
+      postgres: { condition: service_healthy }
+      product-service: { condition: service_healthy }
+    networks: [backend]
+
+  gateway:
+    <<: *restart
+    build: ./gateway
+    environment:
+      JWT_SECRET: ${JWT_SECRET}
+      USER_URL: http://user-service:5000
+      PRODUCT_URL: http://product-service:8080
+      ORDER_URL: http://order-service:3002
+    depends_on:
+      user-service: { condition: service_healthy }
+      product-service: { condition: service_healthy }
+      order-service: { condition: service_healthy }
+    networks: [backend, frontend]
+
+  frontend:
+    <<: *restart
+    build: ./frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      gateway: { condition: service_healthy }
+    networks: [frontend]
+
+networks:
+  frontend:
+  backend:
+
+volumes:
+  pgdata:
+  mongodata:
